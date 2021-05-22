@@ -1,0 +1,47 @@
+[api]
+  enabled = true
+[sources.in]
+  type = "file" # required
+  ignore_older_secs = 600 # optional, no default, seconds
+  include = ["/tmp/zabbix/history-history-syncer-*.ndjson"]
+
+[transforms.remap]
+  type = "remap"
+  inputs = ["in"]
+  source = '''
+  . = parse_json!(string!(.message))
+  .host_name = object!(.host).name
+  .host = object!(.host).host
+  .value, err = to_float(.value)
+  if err != null {
+    .value = to_string(.value)
+  }
+  del(.item_tags)
+  del(.groups)
+  '''
+
+[transforms.strings]
+  type = "filter"
+  inputs = ["remap"]
+  condition = ".type != 0 && .type != 3"
+
+[transforms.numbers]
+  type = "filter"
+  inputs = ["remap"]
+  condition = ".type == 0 || .type == 3"
+
+[sinks.ch_numbers]
+  type = "clickhouse"
+  inputs = ["numbers"]
+  compression = "gzip"
+  database = "zbx"
+  endpoint = "http://localhost:8123"
+  table = "history"
+
+[sinks.ch_strings]
+  type = "clickhouse"
+  inputs = ["strings"]
+  compression = "gzip"
+  database = "zbx"
+  endpoint = "http://localhost:8123"
+  table = "history_str"
